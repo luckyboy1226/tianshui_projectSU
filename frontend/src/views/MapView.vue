@@ -1286,9 +1286,22 @@ const healthStatusText = (status) => {
   return '待检测'
 }
 
+const isPlaceholderServiceMessage = (record) => {
+  const message = String(record?.service_health_message || '')
+  const serviceUrl = String(record?.service_url || record?.wms_url || record?.wfs_url || record?.wcs_url || '')
+  return (
+    message.includes('示例地址未配置真实服务') ||
+    serviceUrl.includes('example.com') ||
+    serviceUrl.includes('example.org') ||
+    serviceUrl.includes('example.net')
+  )
+}
+
 const upsertBusinessLayer = (record) => {
   const id = String(record.id)
   const existing = businessLayers.find(item => item.id === id)
+  const isPlaceholder = isPlaceholderServiceMessage(record)
+  const healthStatus = isPlaceholder ? 'unknown' : (record.service_health_status || 'unknown')
   const next = {
     id,
     name: record.name,
@@ -1305,9 +1318,9 @@ const upsertBusinessLayer = (record) => {
     originLabel: sourceOriginLabel(record),
     primaryServiceUrl: primaryBusinessServiceUrl(record),
     createdAtText: formatDateTime(record.created_at),
-    healthStatus: record.service_health_status || 'unknown',
-    healthText: healthStatusText(record.service_health_status),
-    healthMessage: record.service_health_message || ''
+    healthStatus,
+    healthText: isPlaceholder ? '待检测' : healthStatusText(healthStatus),
+    healthMessage: isPlaceholder ? '示例地址未配置真实服务，暂不执行连通性检测' : (record.service_health_message || '')
   }
   if (existing) {
     Object.assign(existing, next)

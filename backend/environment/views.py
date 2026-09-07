@@ -2693,6 +2693,15 @@ def _update_url_query(url, **params):
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
+def _is_placeholder_service_url(url):
+    try:
+        host = (urlsplit(url).hostname or '').lower()
+    except Exception:
+        return False
+    placeholder_hosts = {'example.com', 'example.org', 'example.net'}
+    return host in placeholder_hosts or any(host.endswith(f'.{item}') for item in placeholder_hosts)
+
+
 def _service_health_payload(status_value='unknown', message=None):
     return {
         'service_health_status': status_value,
@@ -2934,6 +2943,9 @@ def _check_layer_service_availability(layer):
     timeout = 20
     metadata = layer.metadata or {}
     geoserver_auth = None
+
+    if any(_is_placeholder_service_url(url) for url in [layer.wms_url, layer.wfs_url, layer.wcs_url, getattr(layer, 'service_url', None)] if url):
+        return _service_health_payload('unknown', '示例地址未配置真实服务，暂不执行连通性检测')
 
     if layer.geoserver_workspace and not metadata.get('is_external_service'):
         from .geoserver_config import get_geoserver_manager
@@ -3993,7 +4005,7 @@ class BusinessLayerViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         public_actions = {'list', 'retrieve'}
-        if self.action in public_actions:
+        if self.action in public_actions or _allow_anonymous_business_layer_admin():
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
@@ -4434,6 +4446,14 @@ class EcologicalIndexFileViewSet(viewsets.ModelViewSet):
             return EcologicalIndexFileUploadSerializer
         return EcologicalIndexFileSerializer
 
+    def create(self, request, *args, **kwargs):
+        upload_serializer = self.get_serializer(data=request.data)
+        upload_serializer.is_valid(raise_exception=True)
+        self.perform_create(upload_serializer)
+        instance = upload_serializer.instance
+        response_serializer = EcologicalIndexFileSerializer(instance, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         """处理文件上传"""
         instance = serializer.save(uploaded_by=self.request.user if self.request.user.is_authenticated else None)
@@ -4473,6 +4493,14 @@ class EcologicalProjectFileViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return EcologicalProjectFileUploadSerializer
         return EcologicalProjectFileSerializer
+
+    def create(self, request, *args, **kwargs):
+        upload_serializer = self.get_serializer(data=request.data)
+        upload_serializer.is_valid(raise_exception=True)
+        self.perform_create(upload_serializer)
+        instance = upload_serializer.instance
+        response_serializer = EcologicalProjectFileSerializer(instance, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):
         """处理文件上传"""

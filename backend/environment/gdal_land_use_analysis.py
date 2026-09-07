@@ -641,7 +641,7 @@ class LandUseAnalyzer:
                             colors_pie.append(class_info['color'])
                 
                 if areas:
-                    wedges, texts, autotexts = ax2.pie(
+                    wedges, texts = ax2.pie(
                         areas,
                         labels=None,
                         colors=colors_pie,
