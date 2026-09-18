@@ -151,6 +151,7 @@ class ProcessingTask(models.Model):
     """处理任务模型"""
     TASK_STATUS_CHOICES = [
         ('pending', '等待中'),
+        ('retrying', '恢复重试中'),
         ('processing', '处理中'),
         ('completed', '已完成'),
         ('failed', '失败'),
@@ -185,6 +186,15 @@ class ProcessingTask(models.Model):
     dispatch_attempts = models.PositiveIntegerField(default=0, verbose_name='投递尝试次数')
     dispatching_at = models.DateTimeField(blank=True, null=True, verbose_name='最近投递认领时间')
     last_dispatch_error = models.TextField(blank=True, default='', verbose_name='最近投递错误')
+    worker_identifier = models.CharField(max_length=255, blank=True, default='', verbose_name='执行Worker标识')
+    last_heartbeat_at = models.DateTimeField(blank=True, null=True, verbose_name='最近执行心跳')
+    lease_expires_at = models.DateTimeField(blank=True, null=True, verbose_name='执行租约到期')
+    attempt_count = models.PositiveIntegerField(default=0, verbose_name='执行尝试次数')
+    retry_count = models.PositiveIntegerField(default=0, verbose_name='恢复重试次数')
+    max_retry_count = models.PositiveIntegerField(default=2, verbose_name='最大恢复重试次数')
+    failed_at = models.DateTimeField(blank=True, null=True, verbose_name='失败时间')
+    failure_code = models.CharField(max_length=64, blank=True, default='', verbose_name='失败代码')
+    recovery_action = models.CharField(max_length=128, blank=True, default='', verbose_name='最近恢复动作')
     
     # 进度信息
     progress = models.IntegerField(default=0, verbose_name='进度百分比')
@@ -209,6 +219,7 @@ class ProcessingTask(models.Model):
         indexes = [
             models.Index(fields=['status', 'priority', 'created_at'], name='processing_task_queue_idx'),
             models.Index(fields=['dispatch_status', 'created_at'], name='processing_task_dispatch_idx'),
+            models.Index(fields=['status', 'lease_expires_at'], name='processing_task_lease_idx'),
         ]
     
     def __str__(self):

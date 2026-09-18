@@ -14,6 +14,7 @@ plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS', 
 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 import os
 import tempfile
+import time
 from PIL import Image
 import pandas as pd
 from sklearn.decomposition import PCA
@@ -48,6 +49,24 @@ class EcologicalIndexCalculator:
         self.metadata = None
         self._sensor_band_mapping = None
         self._scaled_band_cache = {}
+        self.stage_timings = {}
+        # 科学栅格保持全分辨率；仅 PNG 预览降采样。
+        self.preview_max_dimension = 2048
+        self.statistics_chunk_rows = 512
+        self.output_options = {
+            'tiled': True,
+            'blockxsize': 512,
+            'blockysize': 512,
+            'BIGTIFF': 'IF_SAFER',
+        }
+        # NONE（默认）优先低延迟；DEFLATE/ZSTD 用于存储或网络 I/O 优先场景。
+        compression = os.environ.get('GIS_RASTER_COMPRESSION', 'NONE').strip().lower()
+        if compression in {'deflate', 'zstd'}:
+            self.output_options.update({'compress': compression, 'predictor': 3})
+
+    def _record_stage(self, name, started_at):
+        """累计记录可由任务/压测命令读取的结构化阶段耗时（秒）。"""
+        self.stage_timings[name] = round(self.stage_timings.get(name, 0.0) + time.perf_counter() - started_at, 6)
         
     def load_image(self):
         """加载遥感影像"""
@@ -207,18 +226,21 @@ class EcologicalIndexCalculator:
         if band_a is None or band_b is None:
             return None
 
-        numerator = band_a - band_b
-        denominator = band_a + band_b
-        result = np.full_like(band_a, np.nan, dtype=np.float32)
+        # 复用 result 作为分子，避免额外保留一个 65M 像元临时数组。
+        result = np.empty_like(band_a, dtype=np.float32)
+        np.subtract(band_a, band_b, out=result)
+        denominator = np.add(band_a, band_b, dtype=np.float32)
         valid_mask = np.isfinite(band_a) & np.isfinite(band_b) & (denominator != 0)
-        result[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
-        return np.clip(result, -1.0, 1.0)
+        np.divide(result, denominator, out=result, where=valid_mask)
+        result[~valid_mask] = np.nan
+        np.clip(result, -1.0, 1.0, out=result)
+        return result
 
     def _safe_divide(self, numerator, denominator):
         """安全除法，非法值返回NaN。"""
         result = np.full_like(numerator, np.nan, dtype=np.float32)
         valid_mask = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-        result[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
+        np.divide(numerator, denominator, out=result, where=valid_mask)
         return result
 
     def _normalize_to_unit_interval(self, index_data):
@@ -228,11 +250,12 @@ class EcologicalIndexCalculator:
         if not np.any(valid_mask):
             return normalized
 
-        valid_values = index_data[valid_mask]
-        min_val = np.min(valid_values)
-        max_val = np.max(valid_values)
+        # nanmin/nanmax 不会生成 index_data[valid_mask] 这一整幅复制。
+        min_val = np.nanmin(index_data)
+        max_val = np.nanmax(index_data)
         if max_val > min_val:
-            normalized[valid_mask] = (valid_values - min_val) / (max_val - min_val)
+            np.subtract(index_data, min_val, out=normalized, where=valid_mask)
+            np.divide(normalized, max_val - min_val, out=normalized, where=valid_mask)
         else:
             normalized[valid_mask] = 0.0
         return normalized
@@ -507,16 +530,27 @@ class EcologicalIndexCalculator:
             traceback.print_exc()
             return None
     
-    def calculate_rsei(self):
-        """计算RSEI（遥感生态指数）"""
+    def calculate_rsei(self, components=None):
+        """计算RSEI（遥感生态指数）。
+
+        components 为已计算的原始分量数组时直接复用，避免任务编排中对四个
+        6530 万像元分量重复计算；未传入时保留旧调用方式以便兼容/基线 A/B。
+        """
         try:
             logger.info("开始计算RSEI...")
-            
-            # 计算各分量指数
-            greenness = self.calculate_greenness()
-            wetness = self.calculate_wetness()
-            dryness = self.calculate_dryness()
-            heat = self.calculate_heat()
+            component_started = time.perf_counter()
+            if components is None:
+                greenness = self.calculate_greenness()
+                wetness = self.calculate_wetness()
+                dryness = self.calculate_dryness()
+                heat = self.calculate_heat()
+                self._record_stage('rsei_component_recalculation', component_started)
+            else:
+                greenness = components.get('greenness')
+                wetness = components.get('wetness')
+                dryness = components.get('dryness')
+                heat = components.get('heat')
+                self._record_stage('rsei_component_reuse', component_started)
             
             if greenness is None or wetness is None or dryness is None or heat is None:
                 logger.warning("无法计算RSEI，某些分量指数计算失败")
@@ -541,10 +575,12 @@ class EcologicalIndexCalculator:
             
             # 标准RSEI先对四个分量分别归一化，再执行PCA
             try:
+                normalization_started = time.perf_counter()
                 greenness_n = self._normalize_to_unit_interval(greenness)
                 wetness_n = self._normalize_to_unit_interval(wetness)
                 dryness_n = self._normalize_to_unit_interval(dryness)
                 heat_n = self._normalize_to_unit_interval(heat)
+                self._record_stage('rsei_normalization', normalization_started)
 
                 valid_mask_2d = (
                     np.isfinite(greenness_n) &
@@ -566,8 +602,10 @@ class EcologicalIndexCalculator:
 
                 logger.info(f"有效数据点数量: {len(indices_valid)}")
 
+                pca_started = time.perf_counter()
                 pca = PCA(n_components=4)
                 pca_result = pca.fit_transform(indices_valid)
+                self._record_stage('rsei_pca', pca_started)
                 logger.info("PCA计算完成")
 
                 pc1 = pca_result[:, 0]
@@ -618,7 +656,7 @@ class EcologicalIndexCalculator:
             traceback.print_exc()
             return None
     
-    def calculate_statistics(self, index_data):
+    def calculate_statistics(self, index_data, chunk_rows=None):
         """计算指数统计信息"""
         if index_data is None:
             return None
@@ -633,7 +671,11 @@ class EcologicalIndexCalculator:
                 logger.warning("输入数据为空数组")
                 return None
             
-            # 去除无效值
+            chunk_rows = self.statistics_chunk_rows if chunk_rows is None else chunk_rows
+            if chunk_rows:
+                return self._calculate_statistics_chunked(index_data, int(chunk_rows))
+
+            # 兼容旧路径：一次性去除无效值
             try:
                 valid_data = index_data[~np.isnan(index_data)]
             except Exception as mask_error:
@@ -708,6 +750,68 @@ class EcologicalIndexCalculator:
             import traceback
             traceback.print_exc()
             return None
+
+    def _calculate_statistics_chunked(self, index_data, chunk_rows):
+        """分块统计，避免整幅 index_data[valid_mask] 的大数组复制。"""
+        started = time.perf_counter()
+        height = index_data.shape[0]
+        count = 0
+        total = total_sq = 0.0
+        minimum = np.inf
+        maximum = -np.inf
+        for row_off in range(0, height, chunk_rows):
+            values = index_data[row_off:row_off + chunk_rows]
+            valid = values[np.isfinite(values)]
+            if valid.size:
+                count += valid.size
+                minimum = min(minimum, float(np.min(valid)))
+                maximum = max(maximum, float(np.max(valid)))
+                total += float(np.sum(valid, dtype=np.float64))
+                total_sq += float(np.sum(np.square(valid, dtype=np.float64), dtype=np.float64))
+        if not count:
+            logger.warning("没有有效数据来计算统计信息")
+            return None
+
+        mean_value = total / count
+        std_value = float(np.sqrt(max(0.0, total_sq / count - mean_value * mean_value)))
+        stats = {
+            'min_value': float(minimum), 'max_value': float(maximum),
+            'mean_value': float(mean_value), 'std_value': std_value,
+        }
+        if minimum >= 0 and maximum <= 1.000001:
+            thresholds = None
+        else:
+            thresholds = {
+                'excellent': mean_value + 1.5 * std_value,
+                'good': mean_value + 0.5 * std_value,
+                'moderate': mean_value - 0.5 * std_value,
+                'poor': mean_value - 1.5 * std_value,
+            }
+        buckets = {'excellent': 0, 'good': 0, 'moderate': 0, 'poor': 0, 'bad': 0}
+        for row_off in range(0, height, chunk_rows):
+            values = index_data[row_off:row_off + chunk_rows]
+            valid = values[np.isfinite(values)]
+            if not valid.size:
+                continue
+            if thresholds is None:
+                buckets['excellent'] += int(np.count_nonzero(valid >= 0.8))
+                buckets['good'] += int(np.count_nonzero((valid >= 0.6) & (valid < 0.8)))
+                buckets['moderate'] += int(np.count_nonzero((valid >= 0.4) & (valid < 0.6)))
+                buckets['poor'] += int(np.count_nonzero((valid >= 0.2) & (valid < 0.4)))
+                buckets['bad'] += int(np.count_nonzero(valid < 0.2))
+            else:
+                buckets['excellent'] += int(np.count_nonzero(valid >= thresholds['excellent']))
+                buckets['good'] += int(np.count_nonzero((valid >= thresholds['good']) & (valid < thresholds['excellent'])))
+                buckets['moderate'] += int(np.count_nonzero((valid >= thresholds['moderate']) & (valid < thresholds['good'])))
+                buckets['poor'] += int(np.count_nonzero((valid >= thresholds['poor']) & (valid < thresholds['moderate'])))
+                buckets['bad'] += int(np.count_nonzero(valid < thresholds['poor']))
+        pixel_size = 30
+        if self.dataset is not None and getattr(self.dataset, 'transform', None) is not None:
+            pixel_size = (abs(float(self.dataset.transform.a)) + abs(float(self.dataset.transform.e))) / 2
+        area_per_pixel = pixel_size * pixel_size / 1000000
+        stats.update({f'{key}_area': float(value * area_per_pixel) for key, value in buckets.items()})
+        self._record_stage('statistics', started)
+        return stats
     
     def create_visualization(self, index_data, index_name, output_path):
         """创建可视化图片"""
@@ -744,13 +848,21 @@ class EcologicalIndexCalculator:
             cmap = cmap.copy()
             cmap.set_bad((1, 1, 1, 0))
 
-            masked_data = np.ma.masked_invalid(index_data)
+            visualization_started = time.perf_counter()
+            # PNG 是预览而非科学分析产品。对最长边限为 2048 px，避免
+            # Matplotlib/percentile 为全分辨率 6530 万像元建立额外副本。
+            preview_data = index_data
+            max_dimension = self.preview_max_dimension
+            if max_dimension and max(index_data.shape) > max_dimension:
+                stride = int(np.ceil(max(index_data.shape) / float(max_dimension)))
+                preview_data = index_data[::stride, ::stride]
+            masked_data = np.ma.masked_invalid(preview_data)
             valid_mask = ~np.ma.getmaskarray(masked_data)
             if not np.any(valid_mask):
                 logger.warning("没有有效像元用于生成可视化")
                 return False
 
-            height, width = index_data.shape
+            height, width = preview_data.shape
             if width >= height:
                 map_width = 10.0
                 map_height = max(4.5, map_width * height / width)
@@ -809,6 +921,7 @@ class EcologicalIndexCalculator:
                 plt.tight_layout()
                 plt.savefig(output_path, dpi=300, bbox_inches='tight', pad_inches=0.08)
                 plt.close(fig)  # 明确关闭图形
+                self._record_stage('png_visualization', visualization_started)
                 
                 logger.info(f"成功创建可视化图片: {output_path}")
                 return True
@@ -860,8 +973,9 @@ class EcologicalIndexCalculator:
             output_meta.update({
                 'count': 1,
                 'dtype': 'float32',
-                'nodata': np.nan
+                'nodata': np.nan,
             })
+            output_meta.update(self.output_options)
             
             # 确保输出目录存在
             output_dir = os.path.dirname(output_path)
@@ -874,8 +988,17 @@ class EcologicalIndexCalculator:
                 # 明确指定使用GeoTIFF格式，支持Float32数据类型
                 output_meta['driver'] = 'GTiff'
                 
+                write_started = time.perf_counter()
                 with rasterio.open(output_path, 'w', **output_meta) as dst:
-                    dst.write(index_data.astype('float32'), 1)
+                    # 按输出 tile 写入，避免 index_data.astype('float32') 再生成一张
+                    # 全幅副本；科学结果仍是完整分辨率 Float32 GeoTIFF。
+                    for row_off in range(0, index_data.shape[0], 512):
+                        for col_off in range(0, index_data.shape[1], 512):
+                            height = min(512, index_data.shape[0] - row_off)
+                            width = min(512, index_data.shape[1] - col_off)
+                            window = rasterio.windows.Window(col_off, row_off, width, height)
+                            dst.write(index_data[row_off:row_off + height, col_off:col_off + width], 1, window=window)
+                self._record_stage('geotiff_write', write_started)
                 
                 logger.info(f"成功保存结果文件: {output_path}")
                 return True

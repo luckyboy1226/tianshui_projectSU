@@ -8,6 +8,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 
 from environment.models import RemoteSensingImage
 
@@ -56,7 +57,8 @@ class Command(BaseCommand):
             return
 
         # 仅删除带明确压测前缀的数据库影像；报告与真实基准输入从不在清理范围内。
-        images = list(RemoteSensingImage.objects.filter(id__in=image_ids, name__startswith='真实 Landsat 端到端压测-'))
+        benchmark_name = Q(name__startswith='真实 Landsat 端到端压测-') | Q(name__startswith='真实 Landsat RSEI A/B-')
+        images = list(RemoteSensingImage.objects.filter(id__in=image_ids).filter(benchmark_name))
         deleted_images = len(images)
         if images:
             RemoteSensingImage.objects.filter(pk__in=[image.pk for image in images]).delete()

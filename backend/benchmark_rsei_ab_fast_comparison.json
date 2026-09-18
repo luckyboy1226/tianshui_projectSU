@@ -1,0 +1,286 @@
+{
+  "tolerance": 1e-06,
+  "passed": true,
+  "comparison": [
+    {
+      "index_type": "dryness",
+      "valid_pixels": 65301661,
+      "correlation": 1.0,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs_error": 0.0,
+      "metadata_equal": true,
+      "class_area_difference_km2": 0.0,
+      "legacy": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": false,
+        "compression": null,
+        "block_shapes": [
+          [
+            1,
+            8111
+          ]
+        ]
+      },
+      "optimized": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": true,
+        "compression": null,
+        "block_shapes": [
+          [
+            512,
+            512
+          ]
+        ]
+      }
+    },
+    {
+      "index_type": "greenness",
+      "valid_pixels": 65301661,
+      "correlation": 1.0,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs_error": 0.0,
+      "metadata_equal": true,
+      "class_area_difference_km2": 0.0,
+      "legacy": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": false,
+        "compression": null,
+        "block_shapes": [
+          [
+            1,
+            8111
+          ]
+        ]
+      },
+      "optimized": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": true,
+        "compression": null,
+        "block_shapes": [
+          [
+            512,
+            512
+          ]
+        ]
+      }
+    },
+    {
+      "index_type": "heat",
+      "valid_pixels": 65301661,
+      "correlation": 1.0,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs_error": 0.0,
+      "metadata_equal": true,
+      "class_area_difference_km2": 0.0,
+      "legacy": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": false,
+        "compression": null,
+        "block_shapes": [
+          [
+            1,
+            8111
+          ]
+        ]
+      },
+      "optimized": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": true,
+        "compression": null,
+        "block_shapes": [
+          [
+            512,
+            512
+          ]
+        ]
+      }
+    },
+    {
+      "index_type": "rsei",
+      "valid_pixels": 65301661,
+      "correlation": 1.0,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs_error": 0.0,
+      "metadata_equal": true,
+      "class_area_difference_km2": 0.0,
+      "legacy": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": false,
+        "compression": null,
+        "block_shapes": [
+          [
+            1,
+            8111
+          ]
+        ]
+      },
+      "optimized": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": true,
+        "compression": null,
+        "block_shapes": [
+          [
+            512,
+            512
+          ]
+        ]
+      }
+    },
+    {
+      "index_type": "wetness",
+      "valid_pixels": 65301661,
+      "correlation": 1.0,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs_error": 0.0,
+      "metadata_equal": true,
+      "class_area_difference_km2": 0.0,
+      "legacy": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": false,
+        "compression": null,
+        "block_shapes": [
+          [
+            1,
+            8111
+          ]
+        ]
+      },
+      "optimized": {
+        "crs": "EPSG:32629",
+        "transform": [
+          30.0,
+          0.0,
+          339585.0,
+          0.0,
+          -30.0,
+          9152115.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "nodata": NaN,
+        "tiled": true,
+        "compression": null,
+        "block_shapes": [
+          [
+            512,
+            512
+          ]
+        ]
+      }
+    }
+  ]
+}

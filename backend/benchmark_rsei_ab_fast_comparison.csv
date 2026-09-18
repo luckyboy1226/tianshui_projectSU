@@ -1,0 +1,6 @@
+﻿index_type,valid_pixels,correlation,mae,rmse,max_abs_error,metadata_equal,class_area_difference_km2
+dryness,65301661,1.0,0.0,0.0,0.0,True,0.0
+greenness,65301661,1.0,0.0,0.0,0.0,True,0.0
+heat,65301661,1.0,0.0,0.0,0.0,True,0.0
+rsei,65301661,1.0,0.0,0.0,0.0,True,0.0
+wetness,65301661,1.0,0.0,0.0,0.0,True,0.0

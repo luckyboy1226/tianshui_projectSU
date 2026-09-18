@@ -125,6 +125,9 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
         
         # 计算各指数
         calculated_indices = {}
+        # 保存已完成落盘/落库的原始数组，供随后 RSEI 直接复用；不要只保留
+        # EcologicalIndex ORM 对象，否则 calculate_rsei 会把四个分量重新算一遍。
+        calculated_arrays = {}
         
         for i, index_type in enumerate(indices_list):
             try:
@@ -209,6 +212,7 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                     )
                     
                     calculated_indices[index_type] = ecological_index
+                    calculated_arrays[index_type] = index_data
                     logger.info(f"指数 {index_type} 数据库记录创建成功，ID: {ecological_index.id}")
                     
                 except Exception as db_error:
@@ -233,7 +237,7 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                     meta={'current': len(indices_list), 'total': len(indices_list) + 1, 'status': '正在计算RSEI...'}
                 )
                 
-                rsei_result = calculator.calculate_rsei()
+                rsei_result = calculator.calculate_rsei(components=calculated_arrays)
                 if rsei_result:
                     logger.info("RSEI计算成功，开始保存结果")
                     

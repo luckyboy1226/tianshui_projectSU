@@ -1,0 +1,6 @@
+﻿mode,index_type,file,bytes,min,max,mean,std
+optimized_fast,greenness,D:\Zhangyong\Agents\tianshui_projectSU\backend\media\ecological_indices\da0f0ecb-9392-4454-b542-15a253522218\greenness_result.tif,268437888,-1.0,1.0,-0.022299743487431745,0.15416568926317545
+optimized_fast,wetness,D:\Zhangyong\Agents\tianshui_projectSU\backend\media\ecological_indices\da0f0ecb-9392-4454-b542-15a253522218\wetness_result.tif,268437888,-0.3422465920448303,1.387579083442688,0.14759580129825559,0.20331622816293063
+optimized_fast,dryness,D:\Zhangyong\Agents\tianshui_projectSU\backend\media\ecological_indices\da0f0ecb-9392-4454-b542-15a253522218\dryness_result.tif,268437888,-99932.859375,69670.1484375,-0.05631614302097246,32.50808924578574
+optimized_fast,heat,D:\Zhangyong\Agents\tianshui_projectSU\backend\media\ecological_indices\da0f0ecb-9392-4454-b542-15a253522218\heat_result.tif,268437888,149.0,286.8760986328125,190.88339305848106,56.5774640902311
+optimized_fast,rsei,D:\Zhangyong\Agents\tianshui_projectSU\backend\media\ecological_indices\da0f0ecb-9392-4454-b542-15a253522218\rsei_result.tif,268437888,0.0,1.0,0.4692427343888453,0.1822948358174315
