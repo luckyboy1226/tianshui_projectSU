@@ -1,0 +1,277 @@
+{
+  "measurement_scope": "真实 GeoTIFF 端到端处理：HTTP 提交、PostgreSQL、Redis、Celery、Rasterio/GDAL、结果文件与数据库落库",
+  "started_at": "2026-09-18T06:35:02.935183+00:00",
+  "base_url": "http://127.0.0.1:8081",
+  "raster": {
+    "path": "D:\\Zhangyong\\Agents\\tianshui_projectSU\\backend\\media\\remote_sensing\\benchmark\\landsat9_c2l2_20250726_sr_b2_b7_st_b10.tif",
+    "bytes": 449911512,
+    "width": 8111,
+    "height": 8051,
+    "band_count": 7,
+    "dtypes": [
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16"
+    ],
+    "crs": "EPSG:32629",
+    "resolution": [
+      30.0,
+      30.0
+    ],
+    "nodata": 0.0,
+    "descriptions": [
+      "SR_B2",
+      "SR_B3",
+      "SR_B4",
+      "SR_B5",
+      "SR_B6",
+      "SR_B7",
+      "ST_B10"
+    ],
+    "scales": [
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      0.00341802
+    ],
+    "offsets": [
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+      149.0
+    ]
+  },
+  "indices": [
+    "ndvi"
+  ],
+  "tasks_total": 1,
+  "tasks_success": 1,
+  "tasks_failed": 0,
+  "success_rate": 1.0,
+  "submit_http_202": 1,
+  "submission_latencies_ms": [
+    51.08
+  ],
+  "worker_concurrency": 1,
+  "worker_pid": 52140,
+  "wall_seconds": 14.201,
+  "throughput_tasks_per_minute": 4.225,
+  "queue_wait_ms": {
+    "p50": 160.227,
+    "p95": 160.227,
+    "p99": 160.227,
+    "max": 160.227
+  },
+  "execution_ms": {
+    "p50": 13395.425,
+    "p95": 13395.425,
+    "p99": 13395.425,
+    "max": 13395.425
+  },
+  "end_to_end_ms": {
+    "p50": 13570.135,
+    "p95": 13570.135,
+    "p99": 13570.135,
+    "max": 13570.135
+  },
+  "result_bytes_total": 261255322,
+  "worker_cpu_peak_percent": 103.0,
+  "worker_memory_peak_bytes": 4168163328,
+  "redis_queue_peak": 0,
+  "monitor_errors": [],
+  "monitor_samples": [
+    {
+      "at": "2026-09-18T06:34:49.335341+00:00",
+      "cpu_percent": 78.4,
+      "rss_bytes": 376061952,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:49.858858+00:00",
+      "cpu_percent": 97.1,
+      "rss_bytes": 588886016,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:50.384931+00:00",
+      "cpu_percent": 100.0,
+      "rss_bytes": 782340096,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:50.898842+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 962031616,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:51.412823+00:00",
+      "cpu_percent": 100.1,
+      "rss_bytes": 1158545408,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:51.935906+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 1358667776,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:52.451308+00:00",
+      "cpu_percent": 97.1,
+      "rss_bytes": 1517957120,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:52.964594+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 1710211072,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:53.490180+00:00",
+      "cpu_percent": 100.0,
+      "rss_bytes": 1909985280,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:54.005919+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 2189406208,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:54.533337+00:00",
+      "cpu_percent": 103.0,
+      "rss_bytes": 2949185536,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:55.061665+00:00",
+      "cpu_percent": 97.1,
+      "rss_bytes": 3594489856,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:55.592159+00:00",
+      "cpu_percent": 100.0,
+      "rss_bytes": 3732692992,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:56.119361+00:00",
+      "cpu_percent": 100.0,
+      "rss_bytes": 3175522304,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:56.636999+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 3479105536,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:57.166815+00:00",
+      "cpu_percent": 100.0,
+      "rss_bytes": 3210391552,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:57.693117+00:00",
+      "cpu_percent": 100.0,
+      "rss_bytes": 3407335424,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:58.222136+00:00",
+      "cpu_percent": 48.4,
+      "rss_bytes": 3211538432,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:58.750421+00:00",
+      "cpu_percent": 97.1,
+      "rss_bytes": 3799769088,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:59.278943+00:00",
+      "cpu_percent": 96.9,
+      "rss_bytes": 3799769088,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:34:59.806548+00:00",
+      "cpu_percent": 97.1,
+      "rss_bytes": 4112035840,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:35:00.334937+00:00",
+      "cpu_percent": 97.1,
+      "rss_bytes": 3949760512,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:35:00.851361+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 4168163328,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:35:01.374240+00:00",
+      "cpu_percent": 94.1,
+      "rss_bytes": 3950968832,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:35:01.903919+00:00",
+      "cpu_percent": 99.9,
+      "rss_bytes": 3909689344,
+      "queue_length": 0
+    },
+    {
+      "at": "2026-09-18T06:35:02.429700+00:00",
+      "cpu_percent": 88.3,
+      "rss_bytes": 1982812160,
+      "queue_length": 0
+    }
+  ],
+  "machine": {
+    "platform": "Windows-10-10.0.26100-SP0",
+    "logical_cpus": 24,
+    "memory_total_bytes": 137122570240
+  },
+  "tasks": [
+    {
+      "task_id": "790611a8-dc0b-48e6-a4bc-decd25851460",
+      "image_id": "83705acf-0c9d-4569-be8f-18e8da43137b",
+      "status": "completed",
+      "dispatch_status": "dispatched",
+      "dispatch_attempts": 1,
+      "queue_wait_ms": 160.227,
+      "execution_ms": 13395.425,
+      "end_to_end_ms": 13570.135,
+      "error_message": "",
+      "result_files": [
+        {
+          "index_type": "ndvi",
+          "path": "D:\\Zhangyong\\Agents\\tianshui_projectSU\\backend\\media\\ecological_indices\\83705acf-0c9d-4569-be8f-18e8da43137b\\ndvi_result.tif",
+          "bytes": 261255322
+        }
+      ],
+      "result_bytes": 261255322
+    }
+  ],
+  "percentile_method": "nearest-rank"
+}

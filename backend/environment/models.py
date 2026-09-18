@@ -161,6 +161,30 @@ class ProcessingTask(models.Model):
     remote_sensing_image = models.ForeignKey(RemoteSensingImage, on_delete=models.CASCADE, null=True, blank=True, verbose_name='遥感影像')
     task_type = models.CharField(max_length=50, verbose_name='任务类型')
     status = models.CharField(max_length=20, choices=TASK_STATUS_CHOICES, default='pending', verbose_name='任务状态')
+
+    # 高并发提交控制。request_fingerprint 用于审计；active_fingerprint 只在任务未结束时
+    # 保持唯一，作为数据库级 single-flight 锁，避免同一影像被重复计算。
+    idempotency_key = models.CharField(max_length=128, null=True, blank=True, unique=True, verbose_name='幂等请求键')
+    request_fingerprint = models.CharField(max_length=64, blank=True, default='', verbose_name='请求指纹')
+    request_payload = models.JSONField(default=dict, blank=True, verbose_name='任务请求参数')
+    active_fingerprint = models.CharField(max_length=64, null=True, blank=True, unique=True, verbose_name='活跃任务指纹')
+    priority = models.CharField(
+        max_length=10,
+        choices=[('high', '高'), ('normal', '普通'), ('low', '低')],
+        default='normal',
+        verbose_name='任务优先级',
+    )
+    queue_name = models.CharField(max_length=32, default='geo.default', verbose_name='队列名称')
+    celery_task_id = models.CharField(max_length=255, blank=True, default='', verbose_name='Celery任务ID')
+    dispatch_status = models.CharField(
+        max_length=20,
+        choices=[('pending', '待投递'), ('dispatching', '投递中'), ('dispatched', '已投递'), ('failed', '投递失败')],
+        default='pending',
+        verbose_name='投递状态',
+    )
+    dispatch_attempts = models.PositiveIntegerField(default=0, verbose_name='投递尝试次数')
+    dispatching_at = models.DateTimeField(blank=True, null=True, verbose_name='最近投递认领时间')
+    last_dispatch_error = models.TextField(blank=True, default='', verbose_name='最近投递错误')
     
     # 进度信息
     progress = models.IntegerField(default=0, verbose_name='进度百分比')
@@ -182,6 +206,10 @@ class ProcessingTask(models.Model):
         verbose_name_plural = '处理任务'
         db_table = 'processing_tasks'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'priority', 'created_at'], name='processing_task_queue_idx'),
+            models.Index(fields=['dispatch_status', 'created_at'], name='processing_task_dispatch_idx'),
+        ]
     
     def __str__(self):
         image_name = self.remote_sensing_image.name if self.remote_sensing_image else '无关联影像'

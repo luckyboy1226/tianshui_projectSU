@@ -1,0 +1,40 @@
+{
+  "endpoint": "http://127.0.0.1:8081/api/v1/environment/remote-sensing-images/2206f1c3-4ea9-4fe8-8239-0868ded8ef9d/calculate_indices/",
+  "measurement_scope": "任务提交控制面（未启动 GIS Worker；不代表 GeoTIFF 栅格计算吞吐）",
+  "requests": 300,
+  "concurrency": 32,
+  "http_202": 0,
+  "http_errors": 300,
+  "error_samples": [
+    {
+      "status": 0,
+      "body": {
+        "error": "[WinError 10061] 由于目标计算机积极拒绝，无法连接。"
+      }
+    },
+    {
+      "status": 0,
+      "body": {
+        "error": "[WinError 10061] 由于目标计算机积极拒绝，无法连接。"
+      }
+    },
+    {
+      "status": 0,
+      "body": {
+        "error": "[WinError 10061] 由于目标计算机积极拒绝，无法连接。"
+      }
+    }
+  ],
+  "elapsed_seconds": 21.055,
+  "throughput_rps": 14.25,
+  "latency_ms": {
+    "avg": 2106.12,
+    "p50": 2095.07,
+    "p95": 2204.59,
+    "p99": 2244.22,
+    "max": 2289.06
+  },
+  "database_tasks_created": 0,
+  "distinct_task_ids_returned": 0,
+  "duplicate_suppression_passed": false
+}

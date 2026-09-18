@@ -1,0 +1,145 @@
+{
+  "measurement_scope": "真实 GeoTIFF 端到端处理：HTTP 提交、PostgreSQL、Redis、Celery、Rasterio/GDAL、结果文件与数据库落库",
+  "started_at": "2026-09-18T06:46:14.960154+00:00",
+  "base_url": "http://127.0.0.1:8081",
+  "raster": {
+    "path": "D:\\Zhangyong\\Agents\\tianshui_projectSU\\backend\\media\\remote_sensing\\benchmark\\landsat9_c2l2_20250726_sr_b2_b7_st_b10.tif",
+    "bytes": 449911512,
+    "width": 8111,
+    "height": 8051,
+    "band_count": 7,
+    "dtypes": [
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16",
+      "uint16"
+    ],
+    "crs": "EPSG:32629",
+    "resolution": [
+      30.0,
+      30.0
+    ],
+    "nodata": 0.0,
+    "descriptions": [
+      "SR_B2",
+      "SR_B3",
+      "SR_B4",
+      "SR_B5",
+      "SR_B6",
+      "SR_B7",
+      "ST_B10"
+    ],
+    "scales": [
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      2.75e-05,
+      0.00341802
+    ],
+    "offsets": [
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+      -0.2,
+      149.0
+    ]
+  },
+  "indices": [
+    "ndvi"
+  ],
+  "tasks_total": 2,
+  "tasks_success": 2,
+  "tasks_failed": 0,
+  "success_rate": 1.0,
+  "submit_http_202": 2,
+  "submission_latencies_ms": [
+    57.163,
+    146.238
+  ],
+  "worker_concurrency": 2,
+  "worker_pid": 31400,
+  "wall_seconds": 14.299,
+  "throughput_tasks_per_minute": 8.392,
+  "queue_wait_ms": {
+    "p50": 213.553,
+    "p95": 213.553,
+    "p99": 213.553,
+    "max": 215.325
+  },
+  "execution_ms": {
+    "p50": 11423.856,
+    "p95": 11423.856,
+    "p99": 11423.856,
+    "max": 13949.02
+  },
+  "end_to_end_ms": {
+    "p50": 11655.527,
+    "p95": 11655.527,
+    "p99": 11655.527,
+    "max": 14278.571
+  },
+  "result_bytes_total": 522510644,
+  "worker_cpu_peak_percent": null,
+  "worker_memory_peak_bytes": null,
+  "system_memory_peak_used_bytes": null,
+  "system_memory_min_available_bytes": null,
+  "disk_peak_used_bytes": null,
+  "redis_queue_peak": null,
+  "database_connection_count_after": 39,
+  "monitor_errors": [
+    "argument 1 must be str, not WindowsPath"
+  ],
+  "monitor_samples": [],
+  "machine": {
+    "platform": "Windows-10-10.0.26100-SP0",
+    "logical_cpus": 24,
+    "memory_total_bytes": 137122570240
+  },
+  "tasks": [
+    {
+      "task_id": "2ffe6573-a4d4-4677-95da-f403c5011def",
+      "image_id": "9e5c265c-3957-4053-ae64-09a2d19b2f4b",
+      "status": "completed",
+      "dispatch_status": "dispatched",
+      "dispatch_attempts": 1,
+      "queue_wait_ms": 215.325,
+      "execution_ms": 13949.02,
+      "end_to_end_ms": 14278.571,
+      "error_message": "",
+      "result_files": [
+        {
+          "index_type": "ndvi",
+          "path": "D:\\Zhangyong\\Agents\\tianshui_projectSU\\backend\\media\\ecological_indices\\9e5c265c-3957-4053-ae64-09a2d19b2f4b\\ndvi_result.tif",
+          "bytes": 261255322
+        }
+      ],
+      "result_bytes": 261255322
+    },
+    {
+      "task_id": "8683bb50-f758-4e8a-8399-38482c177638",
+      "image_id": "48958a52-5be1-4b54-8ee9-3ebc5945eb70",
+      "status": "completed",
+      "dispatch_status": "dispatched",
+      "dispatch_attempts": 1,
+      "queue_wait_ms": 213.553,
+      "execution_ms": 11423.856,
+      "end_to_end_ms": 11655.527,
+      "error_message": "",
+      "result_files": [
+        {
+          "index_type": "ndvi",
+          "path": "D:\\Zhangyong\\Agents\\tianshui_projectSU\\backend\\media\\ecological_indices\\48958a52-5be1-4b54-8ee9-3ebc5945eb70\\ndvi_result.tif",
+          "bytes": 261255322
+        }
+      ],
+      "result_bytes": 261255322
+    }
+  ]
+}

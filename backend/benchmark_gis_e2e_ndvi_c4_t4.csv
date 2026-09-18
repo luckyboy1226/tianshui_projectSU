@@ -1,0 +1,5 @@
+﻿task_id,image_id,status,dispatch_status,dispatch_attempts,queue_wait_ms,execution_ms,end_to_end_ms,result_bytes,error_message
+0a6174a9-07ef-41ae-94e9-f9079559fa56,e60dabf9-5f90-42f4-ba0a-38b7b1a060b1,completed,dispatched,1,214.021,20019.784,20459.955,261255322,
+76d108de-355f-45f7-87ec-6c901790053e,47993dea-9151-4727-8152-19d53c36963b,completed,dispatched,1,227.683,16325.813,16728.036,261255322,
+5077ad32-3438-427b-99e5-bc5407d55ae2,97f08b22-4cd8-4fd8-bb94-f6f1bff1b137,completed,dispatched,1,239.464,15222.831,15580.059,261255322,
+47feb4f8-0434-41c2-bc82-815290bbfafa,2cb4745f-e436-46dc-af81-948cda8e165b,completed,dispatched,1,256.551,18202.208,18482.005,261255322,

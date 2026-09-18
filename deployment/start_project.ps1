@@ -6,16 +6,22 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$projectRoot = 'D:\tianshui_project'
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $projectRoot 'backend'
 $frontendIndex = Join-Path $projectRoot 'frontend\dist\index.html'
 $runtimeRoot = Join-Path $projectRoot 'runtime'
-$pythonExe = 'C:\Program\python.exe'
-$nginxRoot = 'D:\nginx-1.30.4\nginx-1.30.4'
-$nginxExe = Join-Path $nginxRoot 'nginx.exe'
+$pythonExe = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.conda\envs\ts\python.exe'
+$nginxRoot = $null
+$nginxExe = $null
+$geoserverHome = $null
+$geoserverStartup = $null
 $nginxConfigSource = Join-Path $projectRoot 'deployment\nginx.conf'
-$nginxConfigTarget = Join-Path $nginxRoot 'conf\nginx.conf'
+$nginxConfigTarget = $null
 $projectUrl = 'http://localhost:8081/'
+$redisRuntime = Join-Path $runtimeRoot 'services\redis\Redis-8.10.1-Windows-x64-msys2-with-Service'
+$redisServiceExe = Join-Path $redisRuntime 'RedisService.exe'
+$redisConfig = Join-Path $redisRuntime 'redis.conf'
+$redisDataDirectory = Join-Path $runtimeRoot 'services\redis\data'
 
 function Write-Step([string]$message) {
     Write-Host "[START] $message" -ForegroundColor Cyan
@@ -77,6 +83,53 @@ function Start-ProjectService([string]$serviceName) {
     Write-Ok "Windows service is running: $serviceName"
 }
 
+function Start-LocalRedis {
+    if (Test-ListeningPort 6379) {
+        Write-Ok 'Redis is already listening on port 6379'
+        return
+    }
+
+    $service = Get-Service -Name 'TianshuiRedis' -ErrorAction SilentlyContinue
+    if ($null -ne $service) {
+        Start-ProjectService 'TianshuiRedis'
+    }
+    elseif ((Test-Path -LiteralPath $redisServiceExe) -and (Test-Path -LiteralPath $redisConfig)) {
+        # A non-administrator can still run the local development Redis process.
+        # The dedicated service is preferred where its registration is available.
+        New-Item -ItemType Directory -Path $redisDataDirectory -Force | Out-Null
+        Write-Step 'Starting local Redis on port 6379'
+        Start-Process -FilePath $redisServiceExe `
+            -ArgumentList @('run', '-c', $redisConfig, '--dir', $redisDataDirectory, '--port', '6379', '--foreground') `
+            -WorkingDirectory $redisRuntime `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $runtimeRoot 'redis.out.log') `
+            -RedirectStandardError (Join-Path $runtimeRoot 'redis.err.log')
+        Start-Sleep -Seconds 2
+    }
+    else {
+        throw "Redis runtime files are missing: $redisServiceExe"
+    }
+
+    if (-not (Test-ListeningPort 6379)) {
+        throw "Redis did not become ready. Check: $runtimeRoot\redis.err.log"
+    }
+    Write-Ok 'Redis is ready on port 6379'
+}
+
+function Find-RuntimeDirectory([string]$prefix, [string]$requiredFile) {
+    $directory = Get-ChildItem -LiteralPath $runtimeRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object {
+            ($_.Name -like "$prefix*" -or ($prefix -eq 'geoserver-' -and $_.Name -eq 'GeoServer')) -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName $requiredFile))
+        } |
+        Sort-Object Name -Descending |
+        Select-Object -First 1
+    if ($null -eq $directory) {
+        throw "未找到运行组件 $prefix*（需要文件: $requiredFile）。请先运行 deployment\\install_runtime.ps1。"
+    }
+    return $directory.FullName
+}
+
 # Redis and GeoServer are Windows services and may require administrator rights.
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -92,6 +145,12 @@ if (-not $isAdministrator -and -not $SkipElevation) {
 
 try {
     New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+
+    $nginxRoot = Find-RuntimeDirectory 'nginx-' 'nginx.exe'
+    $nginxExe = Join-Path $nginxRoot 'nginx.exe'
+    $nginxConfigTarget = Join-Path $nginxRoot 'conf\nginx.conf'
+    $geoserverHome = Find-RuntimeDirectory 'geoserver-' 'bin\startup.bat'
+    $geoserverStartup = Join-Path $geoserverHome 'bin\startup.bat'
 
     if (-not (Test-Path -LiteralPath $pythonExe)) {
         throw "Python not found: $pythonExe"
@@ -110,10 +169,16 @@ try {
     # deployment settings before it is started.
     Copy-Item -LiteralPath $nginxConfigSource -Destination $nginxConfigTarget -Force
 
-    # Load the Redis and GeoServer values saved for the current Windows user.
+    # Load project service credentials saved for the current Windows user.
     foreach ($variableName in @(
         'TIANSHUI_CELERY_BROKER_URL',
         'TIANSHUI_CELERY_RESULT_BACKEND',
+        'TIANSHUI_DB_NAME',
+        'TIANSHUI_DB_USER',
+        'TIANSHUI_DB_PASSWORD',
+        'TIANSHUI_DB_HOST',
+        'TIANSHUI_DB_PORT',
+        'TIANSHUI_SECRET_KEY',
         'GEOSERVER_URL',
         'GEOSERVER_USERNAME',
         'GEOSERVER_PASSWORD'
@@ -124,8 +189,50 @@ try {
         }
     }
 
-    Start-ProjectService 'RedisService'
-    Start-ProjectService 'GeoServer'
+    Start-LocalRedis
+
+    if (Test-ListeningPort 8080) {
+        Write-Ok 'GeoServer is already listening on port 8080'
+    }
+    else {
+        Write-Step 'Starting local GeoServer on port 8080'
+        $javaHome = $env:JAVA_HOME
+        if (-not $javaHome -or -not (Test-Path -LiteralPath (Join-Path $javaHome 'bin\java.exe'))) {
+            $javaHome = 'D:\JDK17'
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $javaHome 'bin\java.exe'))) {
+            throw 'GeoServer requires Java 17 or 21. Set JAVA_HOME to a valid JRE/JDK directory.'
+        }
+        $env:JAVA_HOME = $javaHome
+        Start-Process -FilePath $geoserverStartup `
+            -WorkingDirectory $geoserverHome `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $runtimeRoot 'geoserver.out.log') `
+            -RedirectStandardError (Join-Path $runtimeRoot 'geoserver.err.log')
+
+        if (-not (Wait-ForUrl 'http://127.0.0.1:8080/geoserver/web/')) {
+            throw "GeoServer did not become ready. Check: $runtimeRoot\geoserver.err.log"
+        }
+        Write-Ok 'GeoServer is ready'
+    }
+
+    Write-Step 'Ensuring GeoServer workspace exists'
+    & $pythonExe manage.py shell -c "from environment.geoserver_config import GeoServerManager; assert GeoServerManager().create_workspace()"
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not create the GeoServer workspace.'
+    }
+    Write-Ok 'GeoServer workspace is ready'
+
+    # 部署脚本启动了独立 Worker，因此强制 API 仅入队，避免请求线程同步跑 GIS 计算。
+    $env:CELERY_BROKER_URL = $env:TIANSHUI_CELERY_BROKER_URL
+    $env:CELERY_RESULT_BACKEND = $env:TIANSHUI_CELERY_RESULT_BACKEND
+    $env:CELERY_TASK_ALWAYS_EAGER = 'false'
+    $env:DJANGO_SETTINGS_MODULE = 'tianshuipy.settings_postgresql'
+    $celeryConcurrency = if ($env:TIANSHUI_CELERY_CONCURRENCY) {
+        [Math]::Max(2, [int]$env:TIANSHUI_CELERY_CONCURRENCY)
+    } else {
+        [Math]::Max(2, [Environment]::ProcessorCount * 2)
+    }
 
     if (Test-ListeningPort 8000) {
         Write-Ok 'Django backend is already listening on port 8000'
@@ -155,7 +262,7 @@ try {
     else {
         Write-Step 'Starting Celery worker'
         Start-Process -FilePath $pythonExe `
-            -ArgumentList @('-m', 'celery', '-A', 'tianshuipy', 'worker', '-l', 'info', '--pool=solo') `
+            -ArgumentList @('-m', 'celery', '-A', 'tianshuipy', 'worker', '-l', 'info', '--pool=threads', "--concurrency=$celeryConcurrency", '--queues=geo.high,geo.default,geo.low', '-Ofair') `
             -WorkingDirectory $backendRoot `
             -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $runtimeRoot 'celery.out.log') `

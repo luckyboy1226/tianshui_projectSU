@@ -166,6 +166,7 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
     'x-request-time',  # 添加自定义请求时间头
+    'x-idempotency-key',
 ]
 
 # 允许的HTTP方法
@@ -189,11 +190,11 @@ FILE_UPLOAD_HANDLERS = [
 ]
 
 # Celery 配置
-# 开发环境同步执行任务，避免未启动 Redis/RabbitMQ 时 calculate_indices 接口报连接错误。
-CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'true').lower() == 'true'
+# 默认也只受理、入队，不在 HTTP 请求线程执行 GIS；若要调试同步任务可显式设为 true。
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'false').lower() == 'true'
 CELERY_TASK_EAGER_PROPAGATES = False
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'memory://')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'cache+memory://')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('TIANSHUI_CELERY_BROKER_URL', 'memory://'))
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('TIANSHUI_CELERY_RESULT_BACKEND', 'cache+memory://'))
 
 # 日志配置
 LOGGING = {
@@ -258,3 +259,19 @@ CELERY_TASK_TIME_LIMIT = 30 * 60  # 30分钟
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25分钟
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_TIMEOUT = 2
+# 发布失败由 ProcessingTask outbox 记录并由 dispatch_pending_tasks 补投，
+# 避免 HTTP 请求在 Broker 故障时无限等待。
+CELERY_TASK_PUBLISH_RETRY = False
+CELERY_TASK_DEFAULT_DELIVERY_MODE = 'persistent'
+CELERY_TASK_DEFAULT_QUEUE = 'geo.default'
+CELERY_TASK_QUEUES = {
+    'geo.high': {'exchange': 'geo', 'routing_key': 'high'},
+    'geo.default': {'exchange': 'geo', 'routing_key': 'default'},
+    'geo.low': {'exchange': 'geo', 'routing_key': 'low'},
+    'geo.heavy': {'exchange': 'geo', 'routing_key': 'heavy'},
+}
+CELERY_BROKER_TRANSPORT_OPTIONS = {'queue_order_strategy': 'priority'}

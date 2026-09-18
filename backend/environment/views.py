@@ -11,6 +11,7 @@ from django.core.files.base import ContentFile
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.text import get_valid_filename
+from celery import current_app
 import os
 import json
 import base64
@@ -72,6 +73,11 @@ from .serializers import (
     OverlayAnalysisTaskCreateSerializer
 )
 from .tasks import calculate_ecological_indices, calculate_rsei_only
+from .concurrency import (
+    IdempotencyConflict,
+    dispatch_processing_task,
+    submit_ecological_task,
+)
 from .ecological_indices import EcologicalIndexCalculator
 from .band_mapping import (
     get_band_scale_offset,
@@ -539,68 +545,46 @@ class RemoteSensingImageViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def calculate_indices(self, request, pk=None):
-        """计算生态指数"""
+        """创建生态指数计算任务（支持幂等提交和跨实例去重）。"""
         try:
-            # 添加调试信息
-            print(f"收到计算请求，影像ID: {pk}")
-            print(f"请求方法: {request.method}")
-            print(f"请求内容类型: {request.content_type}")
-            print(f"请求数据: {request.data}")
-
             image = self.get_object()
-            print(f"找到影像: {image.name}")
-
-            # 获取要计算的指数类型
             indices_list = request.data.get('indices', ['ndvi', 'ndwi', 'ndbi'])
-            print(f"请求的指数类型: {indices_list}")
-
-            # 标准化指数类型名称（转换为小写）
+            if not isinstance(indices_list, list):
+                return Response({'error': 'indices 必须是数组'}, status=status.HTTP_400_BAD_REQUEST)
             normalized_indices = [idx.lower() for idx in indices_list]
-            print(f"标准化后的指数类型: {normalized_indices}")
-
-            # 验证指数类型
             valid_indices = ['ndvi', 'ndwi', 'ndbi', 'ndsi', 'wetness', 'dryness', 'heat', 'greenness']
             if not all(idx in valid_indices for idx in normalized_indices):
-                error_msg = f'不支持的指数类型。支持的指数: {", ".join(valid_indices)}'
-                print(f"验证失败: {error_msg}")
-                return Response({
-                    'error': error_msg
-                }, status=400)
+                return Response({'error': f'不支持的指数类型。支持的指数: {", ".join(valid_indices)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-            print(f"指数类型验证通过，开始创建任务")
-
-            # 创建处理任务
-            task = ProcessingTask.objects.create(
-                remote_sensing_image=image,
-                task_type=f'生态指数计算 - {", ".join(normalized_indices)}',
-                status='pending',
-                created_by=request.user if request.user.is_authenticated else None
+            submission = submit_ecological_task(
+                image=image,
+                indices=normalized_indices,
+                user=request.user,
+                idempotency_key=request.headers.get('X-Idempotency-Key'),
+                priority=request.data.get('priority', 'normal'),
             )
-
-            print(f"任务创建成功，任务ID: {task.id}")
-            # 启动Celery任务进行计算。开发环境下 Celery eager 模式会同步执行，
-            # 生产环境配置 broker 后仍可异步执行。
-            from .tasks import calculate_ecological_indices
-            celery_task = calculate_ecological_indices.delay(str(image.id), normalized_indices, str(task.id))
-            
-            task.refresh_from_db()
-            print(f"Celery任务启动成功，任务ID: {celery_task.id}")
+            task = dispatch_processing_task(submission.task) if submission.created else submission.task
 
             return Response({
-                'message': '生态指数计算已启动',
+                'message': '生态指数计算已受理' if submission.created else '检测到重复请求，已返回原任务',
                 'task_id': str(task.id),
-                'celery_task_id': str(celery_task.id),
-                'indices': indices_list
-            })
+                'celery_task_id': task.celery_task_id or None,
+                'indices': normalized_indices,
+                'deduplicated': submission.deduplicated,
+                'queue': task.queue_name,
+                'dispatch_status': task.dispatch_status,
+            }, status=status.HTTP_202_ACCEPTED)
+
+        except IdempotencyConflict as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
-            print(f"启动生态指数计算失败: {e}")
-            import traceback
-            traceback.print_exc()
             logger.error(f"启动生态指数计算失败: {e}")
             return Response({
                 'error': f'启动计算失败: {str(e)}'
-            }, status=500)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'])
     def indices(self, request, pk=None):
@@ -703,21 +687,30 @@ class EcologicalIndexViewSet(viewsets.ModelViewSet):
         indices = serializer.validated_data['indices']
         image = get_object_or_404(RemoteSensingImage, id=image_id)
         
-        task = ProcessingTask.objects.create(
-            remote_sensing_image=image,
-            task_type=f'生态指数计算 - {", ".join(indices)}',
-            status='pending',
-            created_by=request.user if request.user.is_authenticated else None
-        )
-        
-        celery_task = calculate_ecological_indices.delay(str(image.id), indices, str(task.id))
+        try:
+            submission = submit_ecological_task(
+                image=image,
+                indices=indices,
+                user=request.user,
+                idempotency_key=request.headers.get('X-Idempotency-Key'),
+                priority=request.data.get('priority', 'normal'),
+            )
+        except IdempotencyConflict as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        task = dispatch_processing_task(submission.task) if submission.created else submission.task
         
         return Response({
-            'message': '生态指数计算已启动',
+            'message': '生态指数计算已受理' if submission.created else '检测到重复请求，已返回原任务',
             'task_id': str(task.id),
-            'celery_task_id': str(celery_task.id),
-            'indices': indices
-        }, status=status.HTTP_201_CREATED)
+            'celery_task_id': task.celery_task_id or None,
+            'indices': indices,
+            'deduplicated': submission.deduplicated,
+            'queue': task.queue_name,
+            'dispatch_status': task.dispatch_status,
+        }, status=status.HTTP_202_ACCEPTED)
     
     @action(detail=True, methods=['get'])
     def statistics(self, request, pk=None):
@@ -805,8 +798,48 @@ class ProcessingTaskViewSet(viewsets.ModelViewSet):
             'error_message': task.error_message,
             'created_at': task.created_at,
             'started_at': task.started_at,
-            'completed_at': task.completed_at
+            'completed_at': task.completed_at,
+            'queue': task.queue_name,
+            'priority': task.priority,
+            'celery_task_id': task.celery_task_id or None,
+            'dispatch_status': task.dispatch_status,
+            'dispatch_attempts': task.dispatch_attempts,
+            'dispatching_at': task.dispatching_at,
+            'last_dispatch_error': task.last_dispatch_error,
         })
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """取消尚未结束的任务，并释放数据库级 single-flight 锁。"""
+        with transaction.atomic():
+            task = ProcessingTask.objects.select_for_update().get(pk=pk)
+            if task.status in {'completed', 'failed', 'cancelled'}:
+                return Response({
+                    'id': str(task.id),
+                    'status': task.status,
+                    'message': '任务已结束，无需重复取消',
+                }, status=status.HTTP_200_OK)
+
+            celery_task_id = task.celery_task_id
+            task.status = 'cancelled'
+            task.current_step = '已取消'
+            task.completed_at = timezone.now()
+            task.active_fingerprint = None
+            task.save(update_fields=['status', 'current_step', 'completed_at', 'active_fingerprint'])
+
+        if celery_task_id:
+            try:
+                # threads pool 无法安全强杀 GIS 代码；运行中的任务会在下一状态写入前看到
+                # cancelled 状态，不会覆盖取消结果。
+                current_app.control.revoke(celery_task_id, terminate=False)
+            except Exception:
+                logger.exception('撤销 Celery 任务失败，任务状态已在数据库中取消: %s', task.id)
+
+        return Response({
+            'id': str(task.id),
+            'status': 'cancelled',
+            'message': '任务已取消，已释放重复提交锁',
+        }, status=status.HTTP_200_OK)
 
 class CitizenFeedbackViewSet(viewsets.ModelViewSet):
     """民众意见反馈视图集"""

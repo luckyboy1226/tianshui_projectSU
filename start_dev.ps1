@@ -6,7 +6,7 @@ $frontendDir = Join-Path $root 'frontend'
 $backendScript = Join-Path $backendDir 'start_dev.ps1'
 $frontendScript = Join-Path $frontendDir 'start_dev.ps1'
 $userProfile = [Environment]::GetFolderPath('UserProfile')
-$backendCondaPython = Join-Path $userProfile 'miniforge3\envs\tianshui-gis\python.exe'
+$backendCondaPython = Join-Path $userProfile '.conda\envs\ts\python.exe'
 
 if (-not (Test-Path $backendScript)) {
     throw "找不到后端启动脚本: $backendScript"

@@ -90,9 +90,11 @@ class ProcessingTaskSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'remote_sensing_image', 'remote_sensing_image_id', 'task_type', 'status', 'status_display',
             'progress', 'current_step', 'error_message',
+            'priority', 'queue_name', 'celery_task_id', 'dispatch_status', 'dispatch_attempts',
+            'dispatching_at', 'last_dispatch_error',
             'created_at', 'started_at', 'completed_at'
         ]
-        read_only_fields = ['id', 'created_at', 'started_at', 'completed_at']
+        read_only_fields = ['id', 'celery_task_id', 'dispatch_status', 'dispatch_attempts', 'dispatching_at', 'last_dispatch_error', 'created_at', 'started_at', 'completed_at']
         
     def create(self, validated_data):
         """处理remote_sensing_image_id字段"""

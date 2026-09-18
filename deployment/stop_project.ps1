@@ -4,8 +4,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$nginxRoot = 'D:\nginx-1.30.4\nginx-1.30.4'
-$nginxExe = Join-Path $nginxRoot 'nginx.exe'
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$runtimeRoot = Join-Path $projectRoot 'runtime'
+$nginxRoot = Get-ChildItem -LiteralPath $runtimeRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like 'nginx-*' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'nginx.exe')) } |
+    Sort-Object Name -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+$nginxExe = if ($nginxRoot) { Join-Path $nginxRoot 'nginx.exe' } else { $null }
 
 function Write-Ok([string]$message) {
     Write-Host "[ OK  ] $message" -ForegroundColor Green

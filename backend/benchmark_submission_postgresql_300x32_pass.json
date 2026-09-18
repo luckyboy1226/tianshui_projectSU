@@ -1,0 +1,22 @@
+{
+  "endpoint": "http://127.0.0.1:8081/api/v1/environment/remote-sensing-images/7404ef96-ea92-453a-a9e7-ec252c86f074/calculate_indices/",
+  "measurement_scope": "任务提交控制面（未启动 GIS Worker；不代表 GeoTIFF 栅格计算吞吐）",
+  "authenticated_request": true,
+  "requests": 300,
+  "concurrency": 32,
+  "http_202": 300,
+  "http_errors": 0,
+  "error_samples": [],
+  "elapsed_seconds": 1.928,
+  "throughput_rps": 155.61,
+  "latency_ms": {
+    "avg": 183.99,
+    "p50": 96.3,
+    "p95": 990.39,
+    "p99": 1723.91,
+    "max": 1907.64
+  },
+  "database_tasks_created": 1,
+  "distinct_task_ids_returned": 1,
+  "duplicate_suppression_passed": true
+}

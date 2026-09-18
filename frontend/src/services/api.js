@@ -120,9 +120,14 @@ export const remoteSensingService = {
   },
   
   // 计算生态指数
-  calculateIndices(imageId, indices = ['ndvi', 'ndwi', 'ndbi']) {
+  calculateIndices(imageId, indices = ['ndvi', 'ndwi', 'ndbi'], options = {}) {
     const url = buildApiUrl(API_ENDPOINTS.REMOTE_SENSING.CALCULATE_INDICES(imageId));
-    const data = { indices: indices };
+    const data = { indices: indices, priority: options.priority || 'normal' };
+    // 调用方在网络层重试时可传回同一个 key；普通点击自动生成新的 key，
+    // 同影像/同指数的跨 key 重复仍由服务端 active_fingerprint 去重。
+    const idempotencyKey = options.idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `eco-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`)
 
     console.log('calculateIndices 调用详情:', {
       url: url,
@@ -131,7 +136,8 @@ export const remoteSensingService = {
       indices: indices
     });
 
-    return request.post(url, data)
+    // 网络层重试和用户重复点击携带同一个键时，后端只会创建一项计算任务。
+    return request.post(url, data, { headers: { 'X-Idempotency-Key': idempotencyKey } })
   },
 
   // 获取影像的生态指数结果
@@ -154,7 +160,12 @@ export const ecologicalIndicesService = {
   
   // 创建指数计算任务
   create(data) {
-    return request.post(buildApiUrl(API_ENDPOINTS.ECOLOGICAL_INDICES.CREATE), data)
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `eco-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
+    return request.post(buildApiUrl(API_ENDPOINTS.ECOLOGICAL_INDICES.CREATE), data, {
+      headers: { 'X-Idempotency-Key': idempotencyKey }
+    })
   },
   
   // 获取指数详情

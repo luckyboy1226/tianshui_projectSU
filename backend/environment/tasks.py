@@ -18,7 +18,13 @@ from .ecological_indices import EcologicalIndexCalculator
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True)
+@shared_task(
+    bind=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    soft_time_limit=25 * 60,
+    time_limit=30 * 60,
+)
 def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
     """
     计算生态指数的Celery任务
@@ -50,8 +56,16 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
         
         if len(indices_list) == 0:
             raise ValueError("指数列表不能为空")
-        
+
         logger.info("输入参数验证通过")
+
+        # 先读取持久化任务并检查取消状态。这样已经进入 Broker、但在
+        # Worker 取到前被取消的消息不会再访问影像或执行 GIS 计算。
+        if task_id:
+            task = ProcessingTask.objects.get(id=task_id)
+            if task.status == 'cancelled':
+                logger.info(f"任务已取消，忽略 Celery 投递: {task.id}")
+                return {'status': 'cancelled', 'message': '任务已取消'}
         
         # 获取遥感影像
         try:
@@ -61,7 +75,6 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
             raise ValueError(f"找不到ID为 {image_id} 的遥感影像")
         
         if task_id:
-            task = ProcessingTask.objects.get(id=task_id)
             task.status = 'processing'
             task.progress = 0
             task.current_step = '开始处理'
@@ -277,14 +290,14 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                                     dryness=calculated_indices['dryness'],
                                     heat=calculated_indices['heat'],
                                     rsei_result=rsei_index,
-                                    pc1_variance=rsei_result.get('pca_variance', [0])[0] if rsei_result.get('pca_variance') else 0,
-                                    pc2_variance=rsei_result.get('pca_variance', [0, 0])[1] if rsei_result.get('pca_variance') and len(rsei_result.get('pca_variance', [])) > 1 else 0,
-                                    pc3_variance=rsei_result.get('pca_variance', [0, 0, 0])[2] if rsei_result.get('pca_variance') and len(rsei_result.get('pca_variance', [])) > 2 else 0,
-                                    pc4_variance=rsei_result.get('pca_variance', [0, 0, 0, 0])[3] if rsei_result.get('pca_variance') and len(rsei_result.get('pca_variance', [])) > 3 else 0,
-                                    greenness_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][0] if rsei_result.get('pca_components') and len(rsei_result.get('pca_components', [])) > 0 else 0,
-                                    wetness_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][1] if rsei_result.get('pca_components') and len(rsei_result.get('pca_components', [])) > 0 else 0,
-                                    dryness_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][2] if rsei_result.get('pca_components') and len(rsei_result.get('pca_components', [])) > 0 else 0,
-                                    heat_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][3] if rsei_result.get('pca_components') and len(rsei_result.get('pca_components', [])) > 0 else 0,
+                                    pc1_variance=rsei_result.get('pca_variance', [0])[0] if len(rsei_result.get('pca_variance', [])) > 0 else 0,
+                                    pc2_variance=rsei_result.get('pca_variance', [0, 0])[1] if len(rsei_result.get('pca_variance', [])) > 1 else 0,
+                                    pc3_variance=rsei_result.get('pca_variance', [0, 0, 0])[2] if len(rsei_result.get('pca_variance', [])) > 2 else 0,
+                                    pc4_variance=rsei_result.get('pca_variance', [0, 0, 0, 0])[3] if len(rsei_result.get('pca_variance', [])) > 3 else 0,
+                                    greenness_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][0] if len(rsei_result.get('pca_components', [])) > 0 else 0,
+                                    wetness_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][1] if len(rsei_result.get('pca_components', [])) > 0 else 0,
+                                    dryness_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][2] if len(rsei_result.get('pca_components', [])) > 0 else 0,
+                                    heat_weight=rsei_result.get('pca_components', [[0, 0, 0, 0]])[0][3] if len(rsei_result.get('pca_components', [])) > 0 else 0,
                                 )
                                 
                                 logger.info("RSEI结果记录创建成功")
@@ -313,12 +326,18 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
         
         # 更新任务状态
         try:
-            from django.utils import timezone
             task.status = 'completed'
             task.progress = 100
             task.current_step = '处理完成'
             task.completed_at = timezone.now()
-            task.save()
+            # 取消请求可能在计算尾声到达，不能把 cancelled 覆盖为 completed。
+            ProcessingTask.objects.filter(pk=task.pk, status='processing').update(
+                status='completed',
+                progress=100,
+                current_step='处理完成',
+                completed_at=timezone.now(),
+                active_fingerprint=None,
+            )
             logger.info("任务状态更新为完成")
         except Exception as task_status_error:
             logger.error(f"更新任务状态失败: {task_status_error}")
@@ -338,9 +357,13 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
         # 更新任务状态为失败
         if task:
             try:
-                task.status = 'failed'
-                task.error_message = str(e)
-                task.save()
+                # 若用户已取消，不将任务重新标记为失败。
+                ProcessingTask.objects.filter(pk=task.pk, status='processing').update(
+                    status='failed',
+                    error_message=str(e),
+                    active_fingerprint=None,
+                    completed_at=timezone.now(),
+                )
                 logger.info("任务状态已更新为失败")
             except Exception as task_error:
                 logger.error(f"更新任务状态为失败时出错: {task_error}")
@@ -486,6 +509,7 @@ def calculate_rsei_only(self, image_id):
             task.progress = 100
             task.current_step = 'RSEI计算完成'
             task.completed_at = timezone.now()
+            task.active_fingerprint = None
             task.save()
             logger.info("RSEI任务状态更新为完成")
         except Exception as task_status_error:
@@ -508,6 +532,7 @@ def calculate_rsei_only(self, image_id):
             try:
                 task.status = 'failed'
                 task.error_message = str(e)
+                task.active_fingerprint = None
                 task.save()
                 logger.info("RSEI任务状态已更新为失败")
             except Exception as task_error:
@@ -739,6 +764,7 @@ def analyze_climate_data_task(self, file_id, task_id, analysis_type='comprehensi
         task.completed_at = timezone.now()
         task.current_step = '分析完成'
         task.progress = 100
+        task.active_fingerprint = None
         task.save()
         
         # 更新文件状态
@@ -762,6 +788,7 @@ def analyze_climate_data_task(self, file_id, task_id, analysis_type='comprehensi
             task.status = 'failed'
             task.error_message = str(e)
             task.completed_at = timezone.now()
+            task.active_fingerprint = None
             task.save()
         
         # 更新文件状态为失败

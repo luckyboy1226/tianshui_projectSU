@@ -42,7 +42,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY', os.getenv('TIANSHUI_SECRET_KEY'))
 if not SECRET_KEY:
     raise ImproperlyConfigured('使用 tianshuipy.settings_postgresql 时必须配置 SECRET_KEY')
 
@@ -104,15 +104,17 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         # 如果需要 GIS 功能，使用：
         # "ENGINE": "django.contrib.gis.db.backends.postgis",
-        "NAME": os.getenv('DB_NAME', 'tianshuipy'),
-        "USER": os.getenv('DB_USER', 'postgres'),
-        "PASSWORD": os.getenv('DB_PASSWORD', ''),
-        "HOST": os.getenv('DB_HOST', 'localhost'),
-        "PORT": os.getenv('DB_PORT', '5432'),
+        "NAME": os.getenv('DB_NAME', os.getenv('TIANSHUI_DB_NAME', 'tianshuipy')),
+        "USER": os.getenv('DB_USER', os.getenv('TIANSHUI_DB_USER', 'postgres')),
+        "PASSWORD": os.getenv('DB_PASSWORD', os.getenv('TIANSHUI_DB_PASSWORD', '')),
+        "HOST": os.getenv('DB_HOST', os.getenv('TIANSHUI_DB_HOST', 'localhost')),
+        "PORT": os.getenv('DB_PORT', os.getenv('TIANSHUI_DB_PORT', '5432')),
         "OPTIONS": {
             "options": "-c client_encoding=UTF8",
+            "connect_timeout": env_int('DB_CONNECT_TIMEOUT', 5),
         },
-        "CONN_MAX_AGE": 60,  # 连接池配置，保持连接 60 秒
+        "CONN_MAX_AGE": env_int('DB_CONN_MAX_AGE', 300),
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 
@@ -193,6 +195,10 @@ CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
 ])
+CORS_ALLOW_HEADERS = [
+    'accept', 'accept-encoding', 'authorization', 'content-type', 'dnt', 'origin',
+    'user-agent', 'x-csrftoken', 'x-requested-with', 'x-request-time', 'x-idempotency-key',
+]
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS', CORS_ALLOWED_ORIGINS)
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', True)
@@ -281,11 +287,11 @@ SPATIAL_SERVICES = {
     'MAX_FEATURES': 10000,
 }
 
-# Celery 配置（本地开发默认同步执行，避免未启动 Redis 时接口直接失败）
-CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'true').lower() == 'true'
+# 生产环境 HTTP 仅创建持久化 outbox 记录并快速返回，GIS 一律由 Worker 执行。
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'false').lower() == 'true'
 CELERY_TASK_EAGER_PROPAGATES = False
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'memory://')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'cache+memory://')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('TIANSHUI_CELERY_BROKER_URL', 'memory://'))
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('TIANSHUI_CELERY_RESULT_BACKEND', 'cache+memory://'))
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -294,4 +300,19 @@ CELERY_ENABLE_UTC = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30分钟
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25分钟
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_TIMEOUT = 2
+CELERY_TASK_PUBLISH_RETRY = False
+CELERY_TASK_DEFAULT_DELIVERY_MODE = 'persistent'
+CELERY_TASK_DEFAULT_QUEUE = 'geo.default'
+CELERY_TASK_QUEUES = {
+    'geo.high': {'exchange': 'geo', 'routing_key': 'high'},
+    'geo.default': {'exchange': 'geo', 'routing_key': 'default'},
+    'geo.low': {'exchange': 'geo', 'routing_key': 'low'},
+    'geo.heavy': {'exchange': 'geo', 'routing_key': 'heavy'},
+}
+CELERY_BROKER_TRANSPORT_OPTIONS = {'queue_order_strategy': 'priority'}
 

@@ -179,18 +179,16 @@ REST_FRAMEWORK = {
 # CORS 配置
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept', 'accept-encoding', 'authorization', 'content-type', 'dnt', 'origin',
+    'user-agent', 'x-csrftoken', 'x-requested-with', 'x-request-time', 'x-idempotency-key',
+]
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
-
-# Celery 异步任务配置。连接信息由当前 Windows 用户的环境变量提供，
-# 避免将 Redis 密码写入源码。
-CELERY_BROKER_URL = os.getenv('TIANSHUI_CELERY_BROKER_URL')
-CELERY_RESULT_BACKEND = os.getenv('TIANSHUI_CELERY_RESULT_BACKEND')
-CELERY_TASK_TRACK_STARTED = True
 
 # 文件上传配置
 # 大遥感栅格不能放进内存处理；超过 10MB 的上传交给 Django 临时文件处理器落盘。
@@ -206,8 +204,19 @@ FILE_UPLOAD_HANDLERS = [
 # 开发演示环境默认同步执行任务，避免未启动 Redis/RabbitMQ 时接口直接报错。
 CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'true').lower() == 'true'
 CELERY_TASK_EAGER_PROPAGATES = False
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'memory://')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'cache+memory://')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', os.getenv('TIANSHUI_CELERY_BROKER_URL', 'memory://'))
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', os.getenv('TIANSHUI_CELERY_RESULT_BACKEND', 'cache+memory://'))
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_DEFAULT_QUEUE = 'geo.default'
+CELERY_TASK_QUEUES = {
+    'geo.high': {'exchange': 'geo', 'routing_key': 'high'},
+    'geo.default': {'exchange': 'geo', 'routing_key': 'default'},
+    'geo.low': {'exchange': 'geo', 'routing_key': 'low'},
+    'geo.heavy': {'exchange': 'geo', 'routing_key': 'heavy'},
+}
 
 # 日志配置
 LOGGING = {

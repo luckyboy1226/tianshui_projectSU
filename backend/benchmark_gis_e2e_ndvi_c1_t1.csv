@@ -1,0 +1,2 @@
+﻿task_id,image_id,status,dispatch_status,dispatch_attempts,queue_wait_ms,execution_ms,end_to_end_ms,result_bytes,error_message
+790611a8-dc0b-48e6-a4bc-decd25851460,83705acf-0c9d-4569-be8f-18e8da43137b,completed,dispatched,1,160.227,13395.425,13570.135,261255322,
