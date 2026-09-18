@@ -1,6 +1,11 @@
 import os
+import shutil
+import socket
 import time
+import json
+from datetime import timedelta
 import logging
+from pathlib import Path
 from django.utils import timezone
 from celery import shared_task
 from django.conf import settings
@@ -16,6 +21,50 @@ from .models import (
 from .ecological_indices import EcologicalIndexCalculator
 
 logger = logging.getLogger(__name__)
+
+EXECUTION_LEASE_SECONDS = int(os.environ.get('GIS_EXECUTION_LEASE_SECONDS', '600'))
+
+
+def _heartbeat(task, step=None):
+    """续租：强杀后恢复命令据此识别陈旧 processing。"""
+    now = timezone.now()
+    updates = {
+        'last_heartbeat_at': now,
+        'lease_expires_at': now + timedelta(seconds=EXECUTION_LEASE_SECONDS),
+    }
+    if step:
+        updates['current_step'] = step
+    ProcessingTask.objects.filter(pk=task.pk, status='processing').update(**updates)
+
+
+def _maybe_inject_fault(point):
+    configured = os.environ.get('GIS_FAULT_INJECT', '').strip().lower()
+    if configured == point:
+        raise RuntimeError(f'GIS_FAULT_{point.upper()}: 受控 GIS 故障注入')
+
+
+def _test_pause_at_pca(task):
+    """仅可靠性演练使用的可审计暂停点；缺任一变量时严格关闭。"""
+    if os.environ.get('GIS_TEST_PAUSE_STAGE', '').strip().lower() != 'pca':
+        return
+    run_id = os.environ.get('GIS_TEST_RUN_ID', '').strip()
+    try:
+        seconds = min(max(int(os.environ.get('GIS_TEST_PAUSE_SECONDS', '0')), 0), 600)
+    except ValueError:
+        seconds = 0
+    if not run_id or not seconds:
+        return
+    audit_dir = Path(settings.BASE_DIR) / 'benchmark' / 'reliability' / run_id / 'worker_kill'
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    ready = audit_dir / 'worker_kill_ready.json'
+    ready.write_text(json.dumps({
+        'run_id': run_id, 'task_id': str(task.id), 'worker_identifier': f'{socket.gethostname()}:{os.getpid()}',
+        'stage': 'pca', 'ready_at': timezone.now().isoformat(), 'pause_seconds': seconds,
+    }, ensure_ascii=False, indent=2), encoding='utf-8')
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        _heartbeat(task, '可靠性演练暂停：PCA 前，等待专用 Worker 强杀')
+        time.sleep(min(2, max(deadline - time.monotonic(), 0)))
 
 
 @shared_task(
@@ -37,6 +86,7 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
     task = None
     image = None
     calculator = None
+    output_dir = None
     
     try:
         logger.info(f"开始执行生态指数计算任务，影像ID: {image_id}")
@@ -80,7 +130,13 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
             task.current_step = '开始处理'
             task.started_at = timezone.now()
             task.error_message = ''
-            task.save(update_fields=['status', 'progress', 'current_step', 'started_at', 'error_message'])
+            task.worker_identifier = f'{socket.gethostname()}:{os.getpid()}'
+            task.attempt_count += 1
+            task.failure_code = ''
+            task.failed_at = None
+            task.recovery_action = ''
+            task.save(update_fields=['status', 'progress', 'current_step', 'started_at', 'error_message', 'worker_identifier', 'attempt_count', 'failure_code', 'failed_at', 'recovery_action'])
+            _heartbeat(task, '开始处理')
             logger.info(f"复用处理任务成功，任务ID: {task.id}")
         else:
             task = ProcessingTask.objects.create(
@@ -103,11 +159,14 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
         
         if not calculator.load_image():
             raise Exception("无法加载遥感影像")
+        _heartbeat(task, '影像读取完成')
+        _maybe_inject_fault('after_load')
         
         logger.info("影像加载成功，开始计算指数")
         
         # 创建输出目录
-        output_dir = os.path.join(settings.MEDIA_ROOT, 'ecological_indices', str(image_id))
+        final_output_dir = os.path.join(settings.MEDIA_ROOT, 'ecological_indices', str(image_id))
+        output_dir = os.path.join(settings.MEDIA_ROOT, 'ecological_indices', '.tmp', str(task.id))
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f"创建输出目录: {output_dir}")
         
@@ -144,6 +203,7 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                     task.progress = progress
                     task.current_step = f'正在计算 {index_type}'
                     task.save(update_fields=['progress', 'current_step'])
+                    _heartbeat(task, f'正在计算 {index_type}')
                 self.update_state(
                     state='PROGRESS',
                     meta={
@@ -178,6 +238,7 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                 logger.info(f"指数 {index_type} 统计信息计算成功")
                 
                 # 保存结果文件
+                _maybe_inject_fault('before_write')
                 result_filename = f"{index_type}_result.tif"
                 result_path = os.path.join(output_dir, result_filename)
                 if calculator.save_result(index_data, result_path):
@@ -213,6 +274,8 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                     
                     calculated_indices[index_type] = ecological_index
                     calculated_arrays[index_type] = index_data
+                    if len(calculated_indices) == 1:
+                        _maybe_inject_fault('after_first_result')
                     logger.info(f"指数 {index_type} 数据库记录创建成功，ID: {ecological_index.id}")
                     
                 except Exception as db_error:
@@ -236,6 +299,8 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                     state='PROGRESS',
                     meta={'current': len(indices_list), 'total': len(indices_list) + 1, 'status': '正在计算RSEI...'}
                 )
+                _heartbeat(task, '正在计算 RSEI PCA')
+                _test_pause_at_pca(task)
                 
                 rsei_result = calculator.calculate_rsei(components=calculated_arrays)
                 if rsei_result:
@@ -318,6 +383,14 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                 traceback.print_exc()
         elif 'rsei' in indices_list:
             logger.warning("已请求RSEI，但当前影像未成功生成标准RSEI所需的四个基础分量")
+
+        # 发布仅发生在所有文件和数据库记录均成功之后；Worker 被强杀时，
+        # .tmp/<task_id> 不会成为前端可见的完成结果。
+        if os.path.isdir(final_output_dir):
+            raise RuntimeError('FINAL_RESULT_DIRECTORY_EXISTS: 目标结果目录已存在，拒绝覆盖')
+        os.makedirs(os.path.dirname(final_output_dir), exist_ok=True)
+        os.replace(output_dir, final_output_dir)
+        _heartbeat(task, '结果已原子发布')
         
         # 更新遥感影像状态
         try:
@@ -341,6 +414,7 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                 current_step='处理完成',
                 completed_at=timezone.now(),
                 active_fingerprint=None,
+                lease_expires_at=None,
             )
             logger.info("任务状态更新为完成")
         except Exception as task_status_error:
@@ -357,6 +431,17 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
         logger.error(f"生态指数计算任务失败: {e}")
         import traceback
         traceback.print_exc()
+
+        # 最终目录尚未原子发布时，数据库记录只能指向当前任务的临时产物。
+        # 删除这些半成品记录（RSEIResult 会级联删除），避免恢复或使用新
+        # 幂等键重提时触发唯一约束，也避免前端误将半成品当作完成结果。
+        # 已发布的最终目录绝不在这里删除或改写。
+        final_dir = locals().get('final_output_dir')
+        if image is not None and (not final_dir or not os.path.isdir(final_dir)):
+            try:
+                EcologicalIndex.objects.filter(remote_sensing_image=image).delete()
+            except Exception:
+                logger.exception("清理失败任务的半成品索引记录失败 task=%s", task_id)
         
         # 更新任务状态为失败
         if task:
@@ -367,7 +452,12 @@ def calculate_ecological_indices(self, image_id, indices_list, task_id=None):
                     error_message=str(e),
                     active_fingerprint=None,
                     completed_at=timezone.now(),
+                    failed_at=timezone.now(),
+                    failure_code=(str(e).split(':', 1)[0] if str(e).startswith('GIS_FAULT_') else 'GIS_TASK_ERROR'),
+                    lease_expires_at=None,
                 )
+                if output_dir and os.path.isdir(output_dir):
+                    shutil.rmtree(output_dir, ignore_errors=True)
                 logger.info("任务状态已更新为失败")
             except Exception as task_error:
                 logger.error(f"更新任务状态为失败时出错: {task_error}")

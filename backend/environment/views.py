@@ -806,6 +806,15 @@ class ProcessingTaskViewSet(viewsets.ModelViewSet):
             'dispatch_attempts': task.dispatch_attempts,
             'dispatching_at': task.dispatching_at,
             'last_dispatch_error': task.last_dispatch_error,
+            'worker_identifier': task.worker_identifier,
+            'last_heartbeat_at': task.last_heartbeat_at,
+            'lease_expires_at': task.lease_expires_at,
+            'attempt_count': task.attempt_count,
+            'retry_count': task.retry_count,
+            'max_retry_count': task.max_retry_count,
+            'failed_at': task.failed_at,
+            'failure_code': task.failure_code,
+            'recovery_action': task.recovery_action,
         })
 
     @action(detail=True, methods=['post'])

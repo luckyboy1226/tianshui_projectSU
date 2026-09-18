@@ -92,9 +92,11 @@ class ProcessingTaskSerializer(serializers.ModelSerializer):
             'progress', 'current_step', 'error_message',
             'priority', 'queue_name', 'celery_task_id', 'dispatch_status', 'dispatch_attempts',
             'dispatching_at', 'last_dispatch_error',
+            'worker_identifier', 'last_heartbeat_at', 'lease_expires_at', 'attempt_count', 'retry_count',
+            'max_retry_count', 'failed_at', 'failure_code', 'recovery_action',
             'created_at', 'started_at', 'completed_at'
         ]
-        read_only_fields = ['id', 'celery_task_id', 'dispatch_status', 'dispatch_attempts', 'dispatching_at', 'last_dispatch_error', 'created_at', 'started_at', 'completed_at']
+        read_only_fields = ['id', 'celery_task_id', 'dispatch_status', 'dispatch_attempts', 'dispatching_at', 'last_dispatch_error', 'worker_identifier', 'last_heartbeat_at', 'lease_expires_at', 'attempt_count', 'retry_count', 'max_retry_count', 'failed_at', 'failure_code', 'recovery_action', 'created_at', 'started_at', 'completed_at']
         
     def create(self, validated_data):
         """处理remote_sensing_image_id字段"""
